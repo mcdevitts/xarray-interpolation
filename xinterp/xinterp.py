@@ -1,24 +1,29 @@
 
+"""
+
+"""
+
 import copy
 import numpy as np
 import scipy
 import scipy.interpolate
 import xarray as xr
 
+__all__ = ('Interpolater', )
 
 @xr.register_dataarray_accessor('interp')
 class Interpolater(object):
     def __init__(self, xarray_obj):
         self._obj = xarray_obj
 
-    def interp1d(self, bounds_error=False, fill_value=None, extend_dims=True, repeat=True, **vectors):
-        """
+    def interp1d(self, bounds_error=False, fill_value=None, repeat=True, **vectors):
+        """Interpolate the DataArray along a single dimension.
 
         Parameters
         ----------
         bounds_error
         fill_value
-        extend_dims
+        repeat
         vectors
 
         Returns
@@ -26,18 +31,25 @@ class Interpolater(object):
         data_array : DataArray
 
         """
-        # There can and should only be one key
-        k = list(vectors.keys())[0]
-        xi = list(vectors.values())[0]
+
+        # There should only be a single interpolation vector!
+        assert len(vectors) == 1, "Only a single interpolation vector can be provided to interp1d!"
+
+        # Create a local copy to ensure the original DataArray is not modified in anyway
+        da = copy.deepcopy(self._obj)
+
+        # Fetch the first (and only) interpolation vector
+        k, xi = list(vectors.items())[0]
 
         # Determine which axis we want to interpolate on
-        ax_idx = self._obj.dims.index(k)
+        try:
+            ax_idx = da.dims.index(k)
+            x = da.coords[k]
+            y = da.data
+        except IndexError:
+            raise IndexError("Invalid vector name: {0}. Name must correspond with one of the DataArray's axes.")
 
-        x = self._obj.coords[k]
-        y = self._obj.data
-
-        #
-        if repeat and self._obj.shape[ax_idx] == 1:
+        if repeat and da.shape[ax_idx] == 1:
             yi = np.repeat(y, len(xi), axis=ax_idx)
 
         else:
@@ -45,7 +57,7 @@ class Interpolater(object):
             if not fill_value:
                 fill_value = "extrapolate"
 
-            # Smartly handle complex data
+            # If the data is complex, interpolate the superposition of the real and imaginary parts
             if np.any(np.iscomplex(y)):
                 f_real = scipy.interpolate.interp1d(x, np.real(y), axis=ax_idx, bounds_error=bounds_error,
                                                     fill_value=fill_value)
@@ -53,22 +65,23 @@ class Interpolater(object):
                                                     fill_value=fill_value)
                 yi = f_real(xi) + 1j * f_imag(xi)
 
+            # Otherwise, just interpolate as usual
             else:
                 f = scipy.interpolate.interp1d(x, y, axis=ax_idx, bounds_error=bounds_error, fill_value=fill_value)
                 yi = f(xi)
 
         # Build a new DataArray leveraging the previous coords object
-        new_coords = copy.deepcopy(self._obj.coords)
+        new_coords = copy.deepcopy(da.coords)
         new_coords[k] = xi
 
         data_array = xr.DataArray(
             yi,
             coords=new_coords,
-            dims=copy.deepcopy(self._obj.dims),
+            dims=copy.deepcopy(da.dims),
         )
         return data_array
 
-    def interpn(self, bounds_error=False, fill_value=None, extend_dims=True, **vectors):
+    def interpnd(self, bounds_error=False, fill_value=None, extend_dims=True, **vectors):
         """
 
         Parameters
@@ -85,11 +98,13 @@ class Interpolater(object):
         """
         # Remove any singular dimensions within the data. These will be treated as extra, extended dimensions that
         # will be broadcast to.
+        # Create a local copy of the array so that any modifications do not impact the original
         da = self._obj.squeeze(drop=True)
 
         keys_interp = list(vectors.keys())
         keys_data = list(da.dims)
 
+        # Does the data have any keys? If not, just broadcast the value to the desired interpolation vectors
         if not keys_data:
             data = copy.copy(da.data)
             vectors_shape = tuple(len(x) for x in vectors.values())
@@ -100,7 +115,6 @@ class Interpolater(object):
                                       coords=vectors,
                                       dims=vectors.keys())
             data_array = data_array.transpose(*vectors.keys())
-
 
         # Are the number of keys equal and are they the same keys?
         elif set(keys_interp) == set(keys_data):
@@ -141,18 +155,7 @@ class Interpolater(object):
 
         # Do keys_data contain all the keys_interp?
         elif set(keys_interp) < set(keys_data):
-            if extend_dims:
-                # Interpolate all the dimensions within the data array
-                ext_vectors = {k: v for k, v in vectors.items() if k not in keys_data}
-                ext_keys = [k for k in vectors.keys() if k not in keys_data]
-
-                dat = copy.deepcopy(da)
-                i_data = self._interpn(data, bounds_error=bounds_error, fill_value=fill_value, )
-
-                # Extend the resulting data array to cover the additional vectors
-                raise NotImplementedError()
-            else:
-                raise NotImplementedError()
+            raise NotImplementedError()
 
         return data_array
 
@@ -211,21 +214,11 @@ class Interpolater(object):
             `vectors`.
 
         """
-        # ensure every key is present
-        # try:
-        #     assert all([k in self._obj.coords.keys() for k in vectors])
-        # except AssertionError as e:
-        #     print(self._obj.coords.keys())
-        #     print(vectors)
-            # raise e
-
-        # 1-D interpolation of an N-D structure
 
         if len(vectors) == 1:
             data_array = self.interp1d(bounds_error=bounds_error, fill_value=fill_value, extend_dims=extend_dims,
                                        repeat=True, **vectors)
         else:
-            data_array = self.interpn(bounds_error=bounds_error, fill_value=fill_value, extend_dims=extend_dims,
+            data_array = self.interpnd(bounds_error=bounds_error, fill_value=fill_value, extend_dims=extend_dims,
                                       **vectors)
-
         return data_array
