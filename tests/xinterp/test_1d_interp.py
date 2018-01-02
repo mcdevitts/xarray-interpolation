@@ -23,7 +23,7 @@ da_1d_complex = xr.DataArray(
 )
 
 
-class TestCreation(unittest.TestCase):
+class Test1DInterp(unittest.TestCase):
     def test_1d_real(self):
         # Within bounds
         result = da_1d_real.interp.smart(x=[0, 0.25, 0.5, 0.75, 1])

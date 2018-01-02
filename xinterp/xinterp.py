@@ -11,6 +11,63 @@ class Interpolater(object):
     def __init__(self, xarray_obj):
         self._obj = xarray_obj
 
+    def interp1d(self, bounds_error=False, fill_value=None, extend_dims=True, repeat=True, **vectors):
+        """
+
+        Parameters
+        ----------
+        bounds_error
+        fill_value
+        extend_dims
+        vectors
+
+        Returns
+        -------
+        data_array : DataArray
+
+        """
+        # There can and should only be one key
+        k = list(vectors.keys())[0]
+        xi = list(vectors.values())[0]
+
+        # Determine which axis we want to interpolate on
+        ax_idx = self._obj.dims.index(k)
+
+        x = self._obj.coords[k]
+        y = self._obj.data
+
+        #
+        if repeat and self._obj.shape[ax_idx] == 1:
+            yi = np.repeat(y, len(xi), axis=ax_idx)
+
+        else:
+            # interp1d's extrapolate behavior is not enabled by default. Have to specify extrapolate in fill_value
+            if not fill_value:
+                fill_value = "extrapolate"
+
+            # Smartly handle complex data
+            if np.any(np.iscomplex(y)):
+                f_real = scipy.interpolate.interp1d(x, np.real(y), axis=ax_idx, bounds_error=bounds_error,
+                                                    fill_value=fill_value)
+                f_imag = scipy.interpolate.interp1d(x, np.imag(y), axis=ax_idx, bounds_error=bounds_error,
+                                                    fill_value=fill_value)
+                yi = f_real(xi) + 1j * f_imag(xi)
+
+            else:
+                f = scipy.interpolate.interp1d(x, y, axis=ax_idx, bounds_error=bounds_error, fill_value=fill_value)
+                yi = f(xi)
+
+        # Build a new DataArray leveraging the previous coords object
+        new_coords = copy.deepcopy(self._obj.coords)
+        new_coords[k] = xi
+
+        data_array = xr.DataArray(
+                yi,
+                coords=new_coords,
+                dims=copy.deepcopy(self._obj.dims),
+        )
+        return data_array
+
     def interpn(self, bounds_error=False, fill_value=None, extend_dims=True, **vectors):
         """
 
@@ -23,8 +80,12 @@ class Interpolater(object):
 
         Returns
         -------
+        data_array : DataArray
 
         """
+        # Remove any singular dimensions within the data. These will be treated as extra, extended dimensions that
+        # will be broadcast to.
+        self._obj = self._obj.squeeze(drop=True)
 
         keys_interp = list(vectors.keys())
         keys_data = list(self._obj.dims)
@@ -40,7 +101,6 @@ class Interpolater(object):
 
         # Do keys_interp contain all the keys_data?
         elif set(keys_interp) > set(keys_data):
-            print('interp has all')
             # The user has requested we interpolate along more dimensions than
             # exists within the DataArray,
             if extend_dims:
@@ -58,7 +118,7 @@ class Interpolater(object):
 
                 ext_data = np.broadcast_to(i_data, ext_vectors_shape + i_data.shape)
                 data_array = xr.DataArray(ext_data,
-                                          coords=i_vectors,
+                                          coords={**ext_vectors, **i_vectors},
                                           dims=ext_keys + i_keys)
                 data_array = data_array.transpose(*vectors.keys())
 
@@ -68,7 +128,6 @@ class Interpolater(object):
 
         # Do keys_data contain all the keys_interp?
         elif set(keys_interp) < set(keys_data):
-            print('data has all')
             if extend_dims:
                 # Interpolate all the dimensions within the data array
                 ext_vectors = {k: v for k, v in vectors.items() if k not in keys_data}
@@ -107,7 +166,7 @@ class Interpolater(object):
 
 
     def smart(self, bounds_error=False, fill_value=None, repeat=True,
-              extend_dims=False, **vectors):
+              extend_dims=True, **vectors):
         """Intelligently interpolate the xarray with multiple dimension and
         complex data.
 
@@ -147,52 +206,10 @@ class Interpolater(object):
             # raise e
 
         # 1-D interpolation of an N-D structure
+
         if len(vectors) == 1:
-            print('1D')
-            # There can and should only be one key
-            k = list(vectors.keys())[0]
-            xi = list(vectors.values())[0]
-
-            # Determine which axis we want to interpolate on
-            ax_idx = self._obj.dims.index(k)
-
-            x = self._obj.coords[k]
-            y = self._obj.data
-
-            #
-            if repeat and self._obj.shape[ax_idx] == 1:
-                yi = np.repeat(y, len(xi), axis=ax_idx)
-
-            else:
-                # interp1d's extrapolate behavior is not enabled by default. Have to specify extrapolate in fill_value
-                if not fill_value:
-                    fill_value = "extrapolate"
-
-                # Smartly handle complex data
-                if np.any(np.iscomplex(y)):
-                    f_real = scipy.interpolate.interp1d(x, np.real(y), axis=ax_idx, bounds_error=bounds_error,
-                                                        fill_value=fill_value)
-                    f_imag = scipy.interpolate.interp1d(x, np.imag(y), axis=ax_idx, bounds_error=bounds_error,
-                                                        fill_value=fill_value)
-                    yi = f_real(xi) + 1j * f_imag(xi)
-
-                else:
-                    f = scipy.interpolate.interp1d(x, y, axis=ax_idx, bounds_error=bounds_error, fill_value=fill_value)
-                    yi = f(xi)
-
-            # Build a new DataArray leveraging the previous coords object
-            new_coords = copy.deepcopy(self._obj.coords)
-            new_coords[k] = xi
-
-            data_array = xr.DataArray(
-                yi,
-                coords=new_coords,
-                dims=copy.deepcopy(self._obj.dims),
-            )
-
-        # if False:
-        #     pass
-
+            data_array = self.interp1d(bounds_error=bounds_error, fill_value=fill_value, extend_dims=extend_dims,
+                                       repeat=True, **vectors)
         else:
             data_array = self.interpn(bounds_error=bounds_error, fill_value=fill_value, extend_dims=extend_dims,
                                       **vectors)
@@ -200,58 +217,58 @@ class Interpolater(object):
         return data_array
 
 
-da_1d_1 = xr.DataArray(
-    np.array((1, ), ),
-    coords={'x': [0, ], },
-    dims=('x', ),
-)
-
-da_1d = xr.DataArray(
-    np.random.randn(2, ),
-    coords={'x': [0, 1], },
-    dims=('x', )
-)
-
-da_2d = xr.DataArray(
-    np.random.randn(2, 3),
-    coords={'x': [0, 1], 'y': [1, 1.5, 2]},
-    dims=('x', 'y')
-)
-
-da_3d = xr.DataArray(
-    np.random.randn(2, 3, 4),
-    coords={'x': [0, 1], 'y': [1, 1.5, 2], 'z': [0, 1, 2, 3]},
-    dims=('x', 'y', 'z')
-)
-
-
-# Interpolates a 2-d matrix along one vector
-da_1d_i = da_1d.interp.smart(x=[0, 0.25, 0.5, 0.75, 1])
-da_1d_iv = da_1d.interp.smart(x=[0, 0.25, 0.5, 0.75, 1], y=[0, 1], extend_dims=True)
-da_1d_ii = da_1d_1.interp.smart(x=[-1, 0, 1])
-da_1d_iii = da_1d_1.interp.smart(x=[-1, 0, 1], y=[0, 1], extend_dims=True)
-# Interpolates a 2-d matrix in 2-d
-da_2d_i = da_2d.interp.smart(x=[0, 0.25, 0.5, 0.75, 1])
-da_2d_i2 = da_2d.interp.smart(x=[0, 0.25, 0.5, 0.75, 1], y=[1, 1.25, 1.75, 2])
-da_3d_i3 = da_3d.interp.smart(
-    x=[0, 0.25, 0.5, 0.75, 1, ],
-    y=[1, 1.25, 1.75, 2, ],
-    z=[1, 1.25, 1.75, 2, 2.25, 2.5, 2.75, 3, ],
-)
-
-# # Either... broadcast to this new dimension or just throw an error
-# # Throwing an error seems to make the most sense
-# da_i = da.interp.smart_interp(x=[0, 0.5], y=[1, 1.1, 1.2], z=[0,1])
-
-# Or...
-
-da_2d = xr.DataArray(
-    np.random.randn(2, 3),
-    coords={'x': [0, 1], 'y': [1, 1.5, 2]},
-    dims=('x', 'y')
-)
-
+# da_1d_1 = xr.DataArray(
+#     np.array((1, ), ),
+#     coords={'x': [0, ], },
+#     dims=('x', ),
+# )
+#
+# da_1d = xr.DataArray(
+#     np.random.randn(2, ),
+#     coords={'x': [0, 1], },
+#     dims=('x', )
+# )
+#
+# da_2d = xr.DataArray(
+#     np.random.randn(2, 3),
+#     coords={'x': [0, 1], 'y': [1, 1.5, 2]},
+#     dims=('x', 'y')
+# )
+#
+# da_3d = xr.DataArray(
+#     np.random.randn(2, 3, 4),
+#     coords={'x': [0, 1], 'y': [1, 1.5, 2], 'z': [0, 1, 2, 3]},
+#     dims=('x', 'y', 'z')
+# )
+#
+#
+# # Interpolates a 2-d matrix along one vector
+# da_1d_i = da_1d.interp.smart(x=[0, 0.25, 0.5, 0.75, 1])
+# da_1d_iv = da_1d.interp.smart(x=[0, 0.25, 0.5, 0.75, 1], y=[0, 1], extend_dims=True)
+# da_1d_ii = da_1d_1.interp.smart(x=[-1, 0, 1])
+# da_1d_iii = da_1d_1.interp.smart(x=[-1, 0, 1], y=[0, 1], extend_dims=True)
+# # Interpolates a 2-d matrix in 2-d
+# da_2d_i = da_2d.interp.smart(x=[0, 0.25, 0.5, 0.75, 1])
 # da_2d_i2 = da_2d.interp.smart(x=[0, 0.25, 0.5, 0.75, 1], y=[1, 1.25, 1.75, 2])
-
-c = da_2d.interp.interpn(y=[1, 1.5, 2], x=[0, 0.5, 1], z=[0, 1])
-d = da_2d.interp.interpn(x=[0, 0.5, 1], y=[1, 1.5, 2], z=[0, 1])
+# da_3d_i3 = da_3d.interp.smart(
+#     x=[0, 0.25, 0.5, 0.75, 1, ],
+#     y=[1, 1.25, 1.75, 2, ],
+#     z=[1, 1.25, 1.75, 2, 2.25, 2.5, 2.75, 3, ],
+# )
+#
+# # # Either... broadcast to this new dimension or just throw an error
+# # # Throwing an error seems to make the most sense
+# # da_i = da.interp.smart_interp(x=[0, 0.5], y=[1, 1.1, 1.2], z=[0,1])
+#
+# # Or...
+#
+# da_2d = xr.DataArray(
+#     np.random.randn(2, 3),
+#     coords={'x': [0, 1], 'y': [1, 1.5, 2]},
+#     dims=('x', 'y')
+# )
+#
+# # da_2d_i2 = da_2d.interp.smart(x=[0, 0.25, 0.5, 0.75, 1], y=[1, 1.25, 1.75, 2])
+#
+# c = da_2d.interp.interpn(y=[1, 1.5, 2], x=[0, 0.5, 1], z=[0, 1])
+# d = da_2d.interp.interpn(x=[0, 0.5, 1], y=[1, 1.5, 2], z=[0, 1])
