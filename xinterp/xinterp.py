@@ -62,9 +62,9 @@ class Interpolater(object):
         new_coords[k] = xi
 
         data_array = xr.DataArray(
-                yi,
-                coords=new_coords,
-                dims=copy.deepcopy(self._obj.dims),
+            yi,
+            coords=new_coords,
+            dims=copy.deepcopy(self._obj.dims),
         )
         return data_array
 
@@ -85,15 +85,27 @@ class Interpolater(object):
         """
         # Remove any singular dimensions within the data. These will be treated as extra, extended dimensions that
         # will be broadcast to.
-        self._obj = self._obj.squeeze(drop=True)
+        da = self._obj.squeeze(drop=True)
 
         keys_interp = list(vectors.keys())
-        keys_data = list(self._obj.dims)
+        keys_data = list(da.dims)
+
+        if not keys_data:
+            data = copy.copy(da.data)
+            vectors_shape = tuple(len(x) for x in vectors.values())
+
+            ext_data = np.broadcast_to(data, vectors_shape)
+
+            data_array = xr.DataArray(ext_data,
+                                      coords=vectors,
+                                      dims=vectors.keys())
+            data_array = data_array.transpose(*vectors.keys())
+
 
         # Are the number of keys equal and are they the same keys?
-        if set(keys_interp) == set(keys_data):
+        elif set(keys_interp) == set(keys_data):
             # This is simple. Just interpolate the darn thing.
-            data = copy.deepcopy(self._obj)
+            data = copy.deepcopy(da)
             i_data = self._interpn(data ,bounds_error=bounds_error, fill_value=fill_value, **vectors)
             data_array = xr.DataArray(i_data,
                                       coords=vectors,
@@ -111,12 +123,13 @@ class Interpolater(object):
                 ext_keys = [k for k in vectors.keys() if k not in keys_data]
 
                 # Slicing of data is not necessary since all the dimensions are being interpolated
-                data = copy.deepcopy(self._obj)
+                data = copy.deepcopy(da)
                 i_data = self._interpn(data, bounds_error=bounds_error, fill_value=fill_value, **i_vectors)
 
                 ext_vectors_shape = tuple(len(x) for x in ext_vectors.values())
 
                 ext_data = np.broadcast_to(i_data, ext_vectors_shape + i_data.shape)
+
                 data_array = xr.DataArray(ext_data,
                                           coords={**ext_vectors, **i_vectors},
                                           dims=ext_keys + i_keys)
@@ -133,7 +146,7 @@ class Interpolater(object):
                 ext_vectors = {k: v for k, v in vectors.items() if k not in keys_data}
                 ext_keys = [k for k in vectors.keys() if k not in keys_data]
 
-                dat = copy.deepcopy(self._obj)
+                dat = copy.deepcopy(da)
                 i_data = self._interpn(data, bounds_error=bounds_error, fill_value=fill_value, )
 
                 # Extend the resulting data array to cover the additional vectors
@@ -160,6 +173,7 @@ class Interpolater(object):
         else:
             f = scipy.interpolate.RegularGridInterpolator(points_original, da.data,
                                                           bounds_error=bounds_error, fill_value=fill_value)
+
             pts = np.reshape(np.meshgrid(*points_interp, indexing='ij'), (len(points_interp), np.prod(output_shape)))
             interp_data = f(pts.T)
         return np.reshape(interp_data, output_shape)
