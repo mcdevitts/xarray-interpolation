@@ -16,7 +16,7 @@ class Interpolater(object):
     def __init__(self, xarray_obj):
         self._obj = xarray_obj
 
-    def interp1d(self, bounds_error=False, fill_value=None, repeat=True, **vectors):
+    def interp1d(self, bounds_error=False, fill_value=None, extend_dims=True, repeat=True, **vectors):
         """Interpolate the DataArray along a single dimension.
 
         Parameters
