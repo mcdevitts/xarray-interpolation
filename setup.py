@@ -6,7 +6,7 @@ setup(
     description='xarray extension adding smart interpolation tools.',
     author='Sean McDevitt',
     author_email='mcdevitts@gmail.com',
-    version='0.1',
+    version='0.1.0',
     packages=find_packages(),
     install_requires=(
         'numpy',
