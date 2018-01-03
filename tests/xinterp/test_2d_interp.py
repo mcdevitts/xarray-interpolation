@@ -20,33 +20,7 @@ da_2d_singular = xr.DataArray(
 
 class Test2DInterp(unittest.TestCase):
     def test_2d_real_within_bounds(self):
-        result = da_2d_real.interp.smart(y=[0, 0.25, 0.5, 0.75, 1])
-        xr.testing.assert_equal(
-            result,
-            xr.DataArray(
-                np.array(([0, 0.25, 0.5, 0.75, 1], [1, 1.25, 1.5, 1.75, 2])),
-                coords={
-                    'x': [0, 1],
-                    'y': [0, 0.25, 0.5, 0.75, 1]
-                },
-                dims=('x', 'y'),
-            )
-        )
-
-        result = da_2d_real.interp.smart(x=[0, 0.5, 1])
-        xr.testing.assert_equal(
-            result,
-            xr.DataArray(
-                np.array(([0, 0.5, 1], [0.5, 1.0, 1.5],  [1, 1.5, 2])),
-                coords={
-                    'x': [0, 0.5, 1],
-                    'y': [0, 0.5, 1]
-                },
-                dims=('x', 'y'),
-            )
-        )
-
-        result = da_2d_real.interp.smart(x=[0, 0.5, 1], y=[0, 0.25, 0.5, 0.75, 1])
+        result = da_2d_real.interp.interpnd(x=[0, 0.5, 1], y=[0, 0.25, 0.5, 0.75, 1])
         xr.testing.assert_equal(
                 result,
                 xr.DataArray(
@@ -62,7 +36,7 @@ class Test2DInterp(unittest.TestCase):
         )
 
     def test_2d_real_outside_bounds(self):
-        result = da_2d_real.interp.smart(y=[-0.1, 0.5, 1.1])
+        result = da_2d_real.interp.interpnd(y=[-0.1, 0.5, 1.1])
         xr.testing.assert_equal(
             result,
             xr.DataArray(
@@ -79,7 +53,7 @@ class Test2DInterp(unittest.TestCase):
         pass
 
     def test_2d_extra_dimensions(self):
-        result = da_2d_singular.interp.smart(x=[0, 1], y=[0, 0.5, 1])
+        result = da_2d_singular.interp.interpnd(x=[0, 1], y=[0, 0.5, 1])
         xr.testing.assert_equal(
             result,
             xr.DataArray(
