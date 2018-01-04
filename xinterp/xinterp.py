@@ -240,11 +240,8 @@ class Interpolater(object):
         data_array: xarray
 
         """
-
         if len(vectors) == 1:
-            data_array = self.interp1d(bounds_error=bounds_error, fill_value=fill_value,
-                                       repeat=True, **vectors)
+            data_array = self.interp1d(bounds_error=bounds_error, fill_value=fill_value, **vectors)
         else:
-            data_array = self.interpnd(bounds_error=bounds_error, fill_value=fill_value,
-                                      **vectors)
+            data_array = self.interpnd(bounds_error=bounds_error, fill_value=fill_value, **vectors)
         return data_array
