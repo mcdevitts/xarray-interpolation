@@ -70,9 +70,10 @@ class Interpolater(object):
             yi = np.repeat(y, len(xi), axis=ax_idx)
 
         else:
-            # interp1d's extrapolate behavior is not enabled by default. Have to specify extrapolate in fill_value
+            # interp1d's extrapolate behavior is not enabled by default. By default just continue to first and last
+            # value. This presents poor extrapolation errors where data "blows up".
             if not fill_value and not bounds_error:
-                fill_value = "extrapolate"
+                fill_value = (y[0], y[-1])
 
             # If the data is complex, interpolate the superposition of the real and imaginary parts
             if np.any(np.iscomplex(y)):
